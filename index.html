@@ -1,0 +1,288 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Minimal Planner</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500&display=swap" rel="stylesheet">
+    <style>
+        :root {
+            --bg: #ffffff;
+            --text: #1a1a1a;
+            --muted: #a0a0a0;
+            --line: #f0f0f0;
+        }
+
+        body {
+            background-color: var(--bg);
+            color: var(--text);
+            font-family: 'Inter', sans-serif;
+            -webkit-font-smoothing: antialiased;
+        }
+
+        input[type="date"]::before {
+            content: attr(placeholder);
+            width: 100%;
+            color: var(--muted);
+        }
+        
+        input[type="date"]:focus::before,
+        input[type="date"]:valid::before {
+            display: none;
+        }
+
+        input[type="date"]::-webkit-calendar-picker-indicator {
+            opacity: 0.3;
+            cursor: pointer;
+        }
+
+        .modal {
+            display: none;
+            background: rgba(255, 255, 255, 0.98);
+        }
+
+        .modal.active {
+            display: flex;
+        }
+
+        .menu-dropdown {
+            display: none;
+            box-shadow: 0 4px 12px rgba(0,0,0,0.05);
+            border: 1px solid var(--line);
+        }
+
+        .menu-dropdown.active {
+            display: block;
+        }
+
+        .advanced-content {
+            max-height: 0;
+            overflow: hidden;
+            transition: max-height 0.3s ease-out;
+        }
+
+        .advanced-content.open {
+            max-height: 200px;
+        }
+
+        /* Description Toggle Styles */
+        .desc-text {
+            cursor: pointer;
+            transition: color 0.2s;
+        }
+        .desc-text:hover {
+            color: var(--text);
+        }
+        .desc-collapsed {
+            display: -webkit-box;
+            -webkit-line-clamp: 1;
+            -webkit-box-orient: vertical;
+            overflow: hidden;
+        }
+    </style>
+</head>
+<body class="p-8 md:p-24 max-w-xl mx-auto" onclick="closeAllMenus()">
+
+    <!-- Header -->
+    <header class="flex justify-between items-baseline mb-20">
+        <div>
+            <h1 id="date-display" class="text-sm font-medium tracking-tight uppercase"></h1>
+        </div>
+        <button onclick="openAddModal()" class="text-[11px] uppercase tracking-widest text-muted hover:text-black transition-colors font-medium">
+            + Add
+        </button>
+    </header>
+
+    <!-- Main View -->
+    <main>
+        <div id="planner-content" class="space-y-12">
+            <!-- Content injected here -->
+        </div>
+    </main>
+
+    <!-- Modal (Shared for Add/Edit) -->
+    <div id="modal" class="modal fixed inset-0 z-50 flex-col items-center justify-center p-6" onclick="toggleModal(false)">
+        <div class="w-full max-w-xs space-y-6" onclick="event.stopPropagation()">
+            <h2 id="modal-title" class="text-[10px] uppercase tracking-[0.2em] text-muted">New Event</h2>
+            
+            <div class="space-y-4">
+                <input type="text" id="event-title" placeholder="Event name" 
+                    class="w-full text-xl outline-none bg-transparent border-b border-line pb-2 focus:border-black transition-colors">
+                
+                <input type="date" id="event-date" placeholder="Select date" required
+                    class="w-full text-sm outline-none bg-transparent border-b border-line pb-2 text-muted focus:text-black transition-colors">
+                
+                <!-- Advanced Section -->
+                <div class="pt-2">
+                    <button onclick="toggleAdvanced()" class="text-[10px] uppercase tracking-widest text-muted flex items-center gap-1 hover:text-black">
+                        Advanced <span id="advanced-arrow">↓</span>
+                    </button>
+                    <div id="advanced-section" class="advanced-content mt-4">
+                        <textarea id="event-desc" placeholder="Add a description..." rows="3"
+                            class="w-full text-sm outline-none bg-transparent border border-line p-3 rounded-lg focus:border-black transition-colors resize-none"></textarea>
+                    </div>
+                </div>
+            </div>
+            
+            <div class="flex gap-4 pt-4">
+                <button id="save-btn" onclick="saveEvent()" class="text-xs font-medium underline underline-offset-4">Save</button>
+                <button onclick="toggleModal(false)" class="text-xs text-muted hover:text-black">Cancel</button>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        let events = JSON.parse(localStorage.getItem('ultra-minimal-planner')) || [];
+        let editingId = null;
+
+        function toggleModal(show) {
+            document.getElementById('modal').classList.toggle('active', show);
+            if (!show) {
+                document.getElementById('advanced-section').classList.remove('open');
+                document.getElementById('advanced-arrow').innerText = '↓';
+            }
+        }
+
+        function toggleAdvanced() {
+            const section = document.getElementById('advanced-section');
+            const arrow = document.getElementById('advanced-arrow');
+            section.classList.toggle('open');
+            arrow.innerText = section.classList.contains('open') ? '↑' : '↓';
+        }
+
+        function openAddModal() {
+            editingId = null;
+            document.getElementById('modal-title').innerText = "New Event";
+            document.getElementById('event-title').value = '';
+            document.getElementById('event-date').value = '';
+            document.getElementById('event-desc').value = '';
+            toggleModal(true);
+            setTimeout(() => document.getElementById('event-title').focus(), 50);
+        }
+
+        function openEditModal(id) {
+            const event = events.find(e => e.id === id);
+            if (!event) return;
+            
+            editingId = id;
+            document.getElementById('modal-title').innerText = "Edit Event";
+            document.getElementById('event-title').value = event.title;
+            document.getElementById('event-date').value = event.date;
+            document.getElementById('event-desc').value = event.description || '';
+            
+            if (event.description) {
+                document.getElementById('advanced-section').classList.add('open');
+                document.getElementById('advanced-arrow').innerText = '↑';
+            }
+            
+            toggleModal(true);
+        }
+
+        function saveEvent() {
+            const title = document.getElementById('event-title').value;
+            const date = document.getElementById('event-date').value;
+            const description = document.getElementById('event-desc').value;
+            if (!title || !date) return;
+
+            if (editingId) {
+                const index = events.findIndex(e => e.id === editingId);
+                events[index] = { ...events[index], title, date, description };
+            } else {
+                events.push({ id: Date.now(), title, date, description });
+            }
+
+            saveAndRender();
+            toggleModal(false);
+        }
+
+        function deleteEvent(id) {
+            events = events.filter(e => e.id !== id);
+            saveAndRender();
+        }
+
+        function toggleDescription(id) {
+            const p = document.getElementById(`desc-${id}`);
+            if (p) {
+                p.classList.toggle('desc-collapsed');
+            }
+        }
+
+        function saveAndRender() {
+            localStorage.setItem('ultra-minimal-planner', JSON.stringify(events));
+            render();
+        }
+
+        function toggleMenu(e, id) {
+            e.stopPropagation();
+            closeAllMenus();
+            const menu = document.getElementById(`menu-${id}`);
+            menu.classList.toggle('active');
+        }
+
+        function closeAllMenus() {
+            document.querySelectorAll('.menu-dropdown').forEach(m => m.classList.remove('active'));
+        }
+
+        function render() {
+            const now = new Date();
+            now.setHours(0,0,0,0);
+            
+            document.getElementById('date-display').innerText = now.toLocaleDateString(undefined, { 
+                month: 'long', day: 'numeric', year: 'numeric' 
+            });
+
+            const container = document.getElementById('planner-content');
+            const sorted = events.sort((a, b) => a.date.localeCompare(b.date));
+
+            if (sorted.length === 0) {
+                container.innerHTML = `<p class="text-sm text-muted italic">Nothing scheduled.</p>`;
+                return;
+            }
+
+            container.innerHTML = sorted.map(e => {
+                const eventDate = new Date(e.date + 'T00:00:00');
+                const diffTime = eventDate - now;
+                const diffDays = Math.ceil(diffTime / (1000 * 60 * 60 * 24));
+                
+                let label = diffDays === 0 ? 'Today' : diffDays === 1 ? 'Tomorrow' : `${diffDays} days`;
+                if (diffDays < 0) label = 'Past';
+
+                return `
+                    <div class="event-item flex flex-col space-y-1 relative">
+                        <div class="flex justify-between items-baseline">
+                            <span class="text-[10px] uppercase tracking-widest text-muted font-medium">${label}</span>
+                            <div class="relative">
+                                <button onclick="toggleMenu(event, ${e.id})" class="p-1 text-muted hover:text-black transition-colors">
+                                    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="1"></circle><circle cx="12" cy="5" r="1"></circle><circle cx="12" cy="19" r="1"></circle></svg>
+                                </button>
+                                <div id="menu-${e.id}" class="menu-dropdown absolute right-0 top-6 bg-white py-1 rounded-md z-10 w-24">
+                                    <button onclick="openEditModal(${e.id})" class="w-full text-left px-3 py-2 text-[11px] hover:bg-gray-50 transition-colors">Edit</button>
+                                    <button onclick="deleteEvent(${e.id})" class="w-full text-left px-3 py-2 text-[11px] text-red-500 hover:bg-red-50 transition-colors">Delete</button>
+                                </div>
+                            </div>
+                        </div>
+                        <div class="border-b border-line pb-4">
+                            <div class="flex justify-between items-baseline mb-1">
+                                <h3 class="text-base font-normal tracking-tight">${e.title}</h3>
+                                <span class="text-[11px] text-muted">${eventDate.toLocaleDateString(undefined, { month: 'short', day: 'numeric' })}</span>
+                            </div>
+                            ${e.description ? `
+                                <p id="desc-${e.id}" 
+                                   onclick="toggleDescription(${e.id})" 
+                                   class="desc-text desc-collapsed text-xs text-muted leading-relaxed transition-all">
+                                   ${e.description}
+                                </p>` : ''}
+                        </div>
+                    </div>
+                `;
+            }).join('');
+        }
+
+        render();
+    </script>
+</body>
+</html>
+
