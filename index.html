@@ -15,6 +15,7 @@
             --muted: #a0a0a0;
             --line: #f0f0f0;
             --accent: #000000;
+            --error: #e53e3e;
         }
 
         body {
@@ -24,7 +25,55 @@
             -webkit-font-smoothing: antialiased;
         }
 
-        input[type="date"]::-webkit-calendar-picker-indicator { opacity: 0.3; cursor: pointer; }
+        /* Fixed Date Input Alignment - Strict Left */
+        input[type="date"] {
+            appearance: none;
+            -webkit-appearance: none;
+            min-height: 2.5rem;
+            display: block;
+            text-align: left;
+            padding-left: 0;
+            cursor: text;
+            width: 100%;
+        }
+
+        /* Forces the date display values to the left */
+        input[type="date"]::-webkit-datetime-edit {
+            display: inline-flex;
+            text-align: left;
+            padding: 0;
+            margin: 0;
+            justify-content: flex-start;
+        }
+
+        /* Specific alignment for the fields inside the date input */
+        input[type="date"]::-webkit-datetime-edit-fields-wrapper {
+            padding: 0;
+            margin: 0;
+            display: flex;
+            justify-content: flex-start;
+        }
+
+        input[type="date"]::-webkit-calendar-picker-indicator { 
+            opacity: 0.3; 
+            cursor: pointer; 
+            filter: grayscale(1);
+            margin-left: auto; /* Pushes the icon to the right, keeping text left */
+        }
+
+        /* Custom Placeholder for Date */
+        input[type="date"]::before {
+            content: attr(data-placeholder);
+            color: var(--muted);
+            position: absolute;
+            left: 0;
+            pointer-events: none;
+        }
+        
+        input[type="date"]:focus::before,
+        input[type="date"]:valid::before {
+            display: none;
+        }
 
         .modal { display: none; background: rgba(255, 255, 255, 0.98); }
         .modal.active { display: flex; }
@@ -41,11 +90,9 @@
         .advanced-content { max-height: 0; overflow: hidden; transition: max-height 0.3s ease-out; }
         .advanced-content.open { max-height: 200px; }
 
-        /* Expansion & Truncation Styles */
         .expandable { cursor: pointer; transition: color 0.2s; }
         .expandable:hover { color: var(--accent); }
         
-        /* Strict single line truncation */
         .collapsed-text { 
             display: -webkit-box; 
             -webkit-line-clamp: 1; 
@@ -55,7 +102,6 @@
             word-break: break-word;
         }
 
-        /* Timeline Styles */
         .timeline-track { position: relative; padding-left: 2rem; }
         .timeline-track::before {
             content: '';
@@ -89,8 +135,15 @@
             margin-top: 0.5rem;
             border-radius: 0 4px 4px 0;
             width: 100%;
-            box-sizing: border-border-box;
+            box-sizing: border-box;
         }
+
+        #validation-msg {
+            height: 14px;
+            opacity: 0;
+            transition: opacity 0.2s;
+        }
+        #validation-msg.visible { opacity: 1; }
     </style>
 </head>
 <body class="p-8 md:p-24 max-w-xl mx-auto" onclick="closeAllMenus()">
@@ -118,12 +171,18 @@
 
     <!-- Modal -->
     <div id="modal" class="modal fixed inset-0 z-50 flex-col items-center justify-center p-6" onclick="toggleModal(false)">
-        <div class="w-full max-w-xs space-y-6" onclick="event.stopPropagation()">
+        <div class="w-full max-w-xs space-y-4" onclick="event.stopPropagation()">
             <h2 id="modal-title" class="text-[10px] uppercase tracking-[0.2em] text-muted font-bold">New Event</h2>
-            <div class="space-y-4">
-                <input type="text" id="event-title" placeholder="Event name" class="w-full text-xl outline-none bg-transparent border-b border-line pb-2 focus:border-black transition-colors">
-                <input type="date" id="event-date" placeholder="Select date" required class="w-full text-sm outline-none bg-transparent border-b border-line pb-2 text-muted focus:text-black transition-colors">
-                <div class="pt-2">
+            
+            <div class="space-y-6">
+                <div>
+                    <input type="text" id="event-title" placeholder="Event name" class="w-full text-xl outline-none bg-transparent border-b border-line pb-2 focus:border-black transition-colors">
+                </div>
+                <div class="relative">
+                    <input type="date" id="event-date" data-placeholder="DD/MM/YY" required class="w-full text-xl outline-none bg-transparent border-b border-line pb-2 focus:border-black transition-colors">
+                </div>
+                
+                <div class="pt-0">
                     <button onclick="toggleAdvanced()" class="text-[10px] uppercase tracking-widest text-muted flex items-center gap-1 hover:text-black">
                         Advanced <span id="advanced-arrow">↓</span>
                     </button>
@@ -132,7 +191,10 @@
                     </div>
                 </div>
             </div>
-            <div class="flex gap-4 pt-4">
+
+            <div id="validation-msg" class="text-[10px] text-red-500 font-medium uppercase tracking-wider">Please fill in both name and date.</div>
+
+            <div class="flex gap-4 pt-2">
                 <button onclick="saveEvent()" class="text-xs font-medium underline underline-offset-4">Save</button>
                 <button onclick="toggleModal(false)" class="text-xs text-muted hover:text-black">Cancel</button>
             </div>
@@ -145,6 +207,7 @@
 
         function toggleModal(show) {
             document.getElementById('modal').classList.toggle('active', show);
+            document.getElementById('validation-msg').classList.remove('visible');
             if (!show) {
                 document.getElementById('advanced-section').classList.remove('open');
                 document.getElementById('advanced-arrow').innerText = '↓';
@@ -184,10 +247,18 @@
         }
 
         function saveEvent() {
-            const title = document.getElementById('event-title').value;
+            const title = document.getElementById('event-title').value.trim();
             const date = document.getElementById('event-date').value;
             const description = document.getElementById('event-desc').value;
-            if (!title || !date) return;
+            const validation = document.getElementById('validation-msg');
+
+            if (!title || !date) {
+                validation.classList.add('visible');
+                return;
+            }
+            
+            validation.classList.remove('visible');
+
             if (editingId) {
                 const index = events.findIndex(e => e.id === editingId);
                 events[index] = { ...events[index], title, date, description };
@@ -252,12 +323,15 @@
                     return `
                         <div class="event-item flex flex-col space-y-1 relative">
                             <div class="flex justify-between items-baseline">
-                                <span class="text-[10px] uppercase tracking-widest text-muted font-medium">${label}</span>
+                                <div class="flex gap-1 items-center">
+                                    <span class="text-[10px] uppercase tracking-widest text-muted font-medium">${label}</span>
+                                    <span class="text-[10px] uppercase tracking-widest text-muted opacity-60">• ${eventDate.toLocaleDateString(undefined, { month: 'short', day: 'numeric' })}</span>
+                                </div>
                                 <div class="relative">
-                                    <button onclick="toggleMenu(event, ${e.id})" class="p-1 text-muted hover:text-black">
-                                        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><circle cx="12" cy="12" r="1"></circle><circle cx="12" cy="5" r="1"></circle><circle cx="12" cy="19" r="1"></circle></svg>
+                                    <button onclick="toggleMenu(event, ${e.id})" class="flex items-center justify-center p-1 text-muted hover:text-black w-6 h-6">
+                                        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" class="mx-auto"><circle cx="12" cy="12" r="1"></circle><circle cx="12" cy="5" r="1"></circle><circle cx="12" cy="19" r="1"></circle></svg>
                                     </button>
-                                    <div id="menu-${e.id}" class="menu-dropdown absolute right-0 top-6 py-1 rounded-md z-10">
+                                    <div id="menu-${e.id}" class="menu-dropdown absolute right-0 top-7 py-1 rounded-md z-10">
                                         <button onclick="openEditModal(${e.id})" class="w-full text-left px-3 py-2 text-[11px] hover:bg-gray-50">Edit</button>
                                         <button onclick="deleteEvent(${e.id})" class="w-full text-left px-3 py-2 text-[11px] text-red-500 hover:bg-red-50">Delete</button>
                                     </div>
@@ -266,7 +340,6 @@
                             <div class="border-b border-line pb-4">
                                 <div class="flex justify-between items-baseline mb-1">
                                     <h3 id="title-${e.id}" onclick="toggleExpand(${e.id}, 'title')" class="expandable text-base font-normal tracking-tight collapsed-text flex-1 pr-4">${e.title}</h3>
-                                    <span class="text-[11px] text-muted whitespace-nowrap">${eventDate.toLocaleDateString(undefined, { month: 'short', day: 'numeric' })}</span>
                                 </div>
                                 ${e.description ? `<p id="desc-${e.id}" onclick="toggleExpand(${e.id}, 'desc')" class="expandable collapsed-text text-xs text-muted leading-relaxed">${e.description}</p>` : ''}
                             </div>
@@ -300,15 +373,6 @@
                                                           class="expandable text-[11px] font-medium block collapsed-text">
                                                         ${e.title}
                                                     </span>
-                                                </div>
-                                                <div class="relative flex-shrink-0">
-                                                    <button onclick="toggleMenu(event, 'rm-${e.id}')" class="p-1 text-muted hover:text-black">
-                                                        <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3"><circle cx="12" cy="12" r="1"></circle><circle cx="12" cy="5" r="1"></circle><circle cx="12" cy="19" r="1"></circle></svg>
-                                                    </button>
-                                                    <div id="menu-rm-${e.id}" class="menu-dropdown absolute right-0 top-4 py-1 rounded-md z-20">
-                                                        <button onclick="openEditModal(${e.id})" class="w-full text-left px-3 py-2 text-[11px] hover:bg-gray-50">Edit</button>
-                                                        <button onclick="deleteEvent(${e.id})" class="w-full text-left px-3 py-2 text-[11px] text-red-500 hover:bg-red-50">Delete</button>
-                                                    </div>
                                                 </div>
                                             </div>
                                         </div>
